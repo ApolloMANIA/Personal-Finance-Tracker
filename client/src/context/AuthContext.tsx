@@ -2,9 +2,9 @@ import { createContext, useReducer, useEffect, ReactNode, Dispatch } from 'react
 
 interface User {
     id: string;
-    name: string;
-    email: string;
-    token:string|null;
+    name?: string;
+    email?: string;
+    token: string | null;
 }
 
 interface AuthState {
@@ -29,18 +29,21 @@ export const AuthContext = createContext<{
     loading: boolean;
     error: string | null;
     dispatch: Dispatch<AuthAction>;
-}>({...initialState, dispatch:()=>null,});
+}>({ ...initialState, dispatch: () => null });
 
 const AuthReducer = (state: AuthState, action: AuthAction): AuthState => {
     switch (action.type) {
         case 'LOGIN_START':
             return { user: null, loading: true, error: null };
         case 'LOGIN_SUCCESS':
-            return { user:{...action.payload as User, token:(action.payload as any).token },
-            loading:false,
-            error:null
-        
-        };
+            return {
+                user: {
+                    ...(action.payload as User),
+                    token: (action.payload as User).token,
+                },
+                loading: false,
+                error: null,
+            };
         case 'LOGIN_FAILURE':
             return { user: null, loading: false, error: action.payload as string };
         case 'REGISTER_SUCCESS':
@@ -55,13 +58,20 @@ interface AuthProviderProps {
     children: ReactNode;
 }
 
-
 export const AuthContextProvider = ({ children }: AuthProviderProps) => {
     const [state, dispatch] = useReducer(AuthReducer, initialState);
 
     useEffect(() => {
         if (state.user) {
-            localStorage.setItem("user", JSON.stringify({ id: state.user.id, token: state.user.token }));
+            localStorage.setItem(
+                "user",
+                JSON.stringify({
+                    id: state.user.id,
+                    token: state.user.token,
+                    name: state.user.name,
+                    email: state.user.email,
+                })
+            );
         } else {
             localStorage.removeItem("user");
         }

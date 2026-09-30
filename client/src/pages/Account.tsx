@@ -1,16 +1,12 @@
-import React, { useContext, useEffect, FormEvent, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import React, { useContext, FormEvent, useRef, useState } from "react";
 import { BASE_URL } from "../utils/config"
 import { AuthContext } from "@/context/AuthContext";
-
-
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
@@ -37,6 +33,7 @@ export default function Account({
   const nameRef = useRef<HTMLInputElement | null>(null)
   const balanceRef = useRef<HTMLInputElement | null>(null)
   const { user } = useContext(AuthContext);
+  const [listKey, setListKey] = useState(0);
 
 
   const handleFormSubmit = async (event: FormEvent) => {
@@ -69,6 +66,7 @@ export default function Account({
         nameRef.current.value = "";
         balanceRef.current.value = "";
         setType("Savings");
+        setListKey((k) => k + 1);
       }else{
         const error = await response.json()
         console.log(error)
@@ -79,10 +77,10 @@ export default function Account({
   }
 
   return (
-    <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card>
+    <div className={cn("mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 pb-8 md:px-6", className)} {...props}>
+      <Card className="rounded-3xl border-border/70 shadow-none">
         <CardHeader>
-          <CardTitle className="text-2xl">User Account</CardTitle>
+          <CardTitle className="text-xl">Add account</CardTitle>
         </CardHeader>
         <CardContent>
 
@@ -134,7 +132,7 @@ export default function Account({
           </form>
         </CardContent>
       </Card>
-      <AccountTable/>
+      <AccountTable key={listKey} />
     </div>
   )
 }

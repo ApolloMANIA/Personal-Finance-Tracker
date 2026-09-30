@@ -1,101 +1,90 @@
-
-
 import {
   Alert,
   AlertDescription,
   AlertTitle,
 } from "@/components/ui/alert"
-
-
-import { useContext, useEffect, useState } from "react";
-import { AuthContext } from "@/context/AuthContext";
-import { BASE_URL } from "@/utils/config";
-import { Link, Navigate } from "react-router-dom";
+import { useCallback, useContext, useState } from "react"
+import { AuthContext } from "@/context/AuthContext"
+import { BASE_URL } from "@/utils/config"
+import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus"
 
 interface Transaction {
-    _id: string;
-    type: string;
-    amount: string;
-    account: string;
-    date: string;
+  _id: string
+  type: string
+  amount: string
+  account: string
+  date: string
 }
 
 export default function Notifications() {
-    const { user } = useContext(AuthContext);
-    const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const { user } = useContext(AuthContext)
+  const [transactions, setTransactions] = useState<Transaction[]>([])
 
-    useEffect(() => {
-        if (!user || !user.token) return;
-        const fetchTransactions = async () => {
-            try {
-                const response = await fetch(`${BASE_URL}/recurring/${user.id}`, {
-                    headers: { Authorization: `Bearer ${user.token}` },
-                });
+  const fetchTransactions = useCallback(async () => {
+    if (!user?.token) return
+    try {
+      const response = await fetch(`${BASE_URL}/recurring/${user.id}`, {
+        headers: { Authorization: `Bearer ${user.token}` },
+      })
+      if (!response.ok) throw new Error("Error fetching data")
 
-                if (!response.ok) throw new Error("Error fetching data");
+      const body = await response.json()
+      const fetchedTransactions: Transaction[] = body.data || []
 
-                let body = await response.json();
-                console.log(body)
-                let fetchedTransactions: Transaction[] = body.data;
+      fetchedTransactions.sort((a, b) => {
+        const dateA = new Date(a.date).getTime()
+        const dateB = new Date(b.date).getTime()
+        if (dateA !== dateB) return dateA - dateB
+        return a.account.localeCompare(b.account)
+      })
 
-                fetchedTransactions.sort((a, b) => {
-                    const dateA = new Date(a.date);
-                    const dateB = new Date(b.date);
+      setTransactions(fetchedTransactions)
+    } catch (error) {
+      console.error("Error fetching notifications:", error)
+    }
+  }, [user])
 
-                    if (dateA < dateB) return 1;
-                    if (dateA > dateB) return -1;
+  useRefetchOnFocus(fetchTransactions, Boolean(user?.token))
 
-                    if (a.account < b.account) return -1;
-                    if (a.account > b.account) return 1;
-
-                    return 0;
-                });
-
-                setTransactions(fetchedTransactions);
-
-                console.log(transactions)
-            } catch (error) {
-                console.error("Error fetching account data:", error);
-            }
-        };
-
-        fetchTransactions();
-        const intervalId = setInterval(fetchTransactions, 10000);
-        return () => {
-            clearInterval(intervalId);
-        };
-    }, [user]);
-
-
-
-
-
-return (
-    <>
-
-        <Alert>
-      {transactions.length>0 ? (
+  return (
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-3 px-4 pb-8 md:px-6">
+      {transactions.length > 0 ? (
         transactions.map((transaction) => {
-          const transactionDate = new Date(transaction.date);
-          const currentDate = new Date();
-  
-          const timeDifference = transactionDate.getTime() - currentDate.getTime();
-          const daysDifference = Math.ceil(timeDifference / (1000 * 3600 * 24));
-  
+          const transactionDate = new Date(transaction.date)
+          const currentDate = new Date()
+          currentDate.setHours(0, 0, 0, 0)
+          transactionDate.setHours(0, 0, 0, 0)
+
+          const daysDifference = Math.ceil(
+            (transactionDate.getTime() - currentDate.getTime()) / (1000 * 3600 * 24)
+          )
+
+          let dueLabel: string
+          if (daysDifference < 0) {
+            dueLabel = `Overdue by ${Math.abs(daysDifference)} day${Math.abs(daysDifference) === 1 ? "" : "s"}`
+          } else if (daysDifference === 0) {
+            dueLabel = "Due today"
+          } else {
+            dueLabel = `Due in ${daysDifference} day${daysDifference === 1 ? "" : "s"}`
+          }
+
           return (
-            <AlertTitle key={transaction._id}>
-              Transaction due in {daysDifference < 0 ? 30+daysDifference : daysDifference} days
+            <Alert key={transaction._id}>
+              <AlertTitle>{dueLabel}</AlertTitle>
               <AlertDescription>
-                {transaction._id.substring(0,5)+"..."} | ${transaction.amount} | {transaction.account} 
+                {transaction.type} · ${transaction.amount} · {transaction.account}
               </AlertDescription>
-            </AlertTitle>
-          );
+            </Alert>
+          )
         })
       ) : (
-      <AlertTitle>No due transactions found.</AlertTitle>
-
+        <Alert>
+          <AlertTitle>No upcoming recurring payments</AlertTitle>
+          <AlertDescription>
+            Add a recurring transaction to see due reminders here.
+          </AlertDescription>
+        </Alert>
       )}
-
-    </Alert>
-    </>
-  )}
+    </div>
+  )
+}

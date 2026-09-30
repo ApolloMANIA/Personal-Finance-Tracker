@@ -24,7 +24,7 @@ interface DatePickerProps{
     onSelect:(date:Date|undefined)=>void;
 }
 
-export function DatePicker({onSelect, ...props}:DatePickerProps) {
+export function DatePicker({onSelect}:DatePickerProps) {
   const [date, setDate] = React.useState<Date|undefined>(undefined)
   const handleDateChange = (newDate:Date|undefined)=>{
     setDate(newDate);

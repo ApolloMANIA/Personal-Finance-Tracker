@@ -1,20 +1,17 @@
-import React, { useContext, useEffect, FormEvent, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import React, { useContext, FormEvent, useRef, useState, useCallback } from "react";
 import { BASE_URL } from "../utils/config"
 import { AuthContext } from "@/context/AuthContext";
-
+import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { DatePicker } from "@/components/date-picker";
 
 import {
@@ -44,33 +41,23 @@ export function Transaction({
   const [account, setAccount] = useState<string|null>(null);
   const amountRef = useRef<HTMLInputElement | null>(null)
   const { user } = useContext(AuthContext);
-  const navigate = useNavigate()
   const [userAccounts, setUserAccounts] = useState<AccountProp[]|[]>([]);
 
-
-  useEffect(()=>{
-    if(!user || !user.token)return;
-    const fetchAccounts = async()=>{
-      try{
-
-      const response = await fetch(`${BASE_URL}/account/${user.id}`,{
-        headers:{Authorization:`Bearer ${user.token}`},
-      });
-      if(!response.ok) throw new Error("Error fetching data");
-      const body = await response.json();
-      console.log(body)
-      const accounts = body.data.accounts;
-      console.log(accounts)
-      setUserAccounts(accounts);
-      }catch(error){
-        console.log(error);
-      }
+  const fetchAccounts = useCallback(async () => {
+    if (!user?.token) return
+    try {
+      const response = await fetch(`${BASE_URL}/account/${user.id}`, {
+        headers: { Authorization: `Bearer ${user.token}` },
+      })
+      if (!response.ok) throw new Error("Error fetching data")
+      const body = await response.json()
+      setUserAccounts(body.data.accounts || [])
+    } catch (error) {
+      console.log(error)
     }
+  }, [user])
 
-    fetchAccounts();
-    const intervalId = setInterval(fetchAccounts,15000);
-    return()=>clearInterval(intervalId);
-  },[user]);
+  useRefetchOnFocus(fetchAccounts, Boolean(user?.token))
 
 
   const handleFormSubmit = async (event: FormEvent) => {
@@ -110,10 +97,10 @@ export function Transaction({
   }
 
   return (
-    <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card>
+    <div className={cn("mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 pb-8 md:px-6", className)} {...props}>
+      <Card className="rounded-3xl border-border/70 shadow-none">
         <CardHeader>
-          <CardTitle className="text-2xl">Add Transaction</CardTitle>
+          <CardTitle className="text-xl">Add transaction</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleFormSubmit} >

@@ -1,337 +1,414 @@
 import { Account, Transaction, MonthlyData, RecurringTransaction } from "../models/AccountSchema.js";
 import User from "../models/UserSchema.js";
 
+const safeGrowth = (current, previous) => {
+    if (!previous || previous === 0) return current === 0 ? 0 : 100;
+    return Math.round(((current - previous) / Math.abs(previous)) * 100);
+};
+
+const applyBalanceChange = (balance, type, amount) => {
+    const value = Number(amount) || 0;
+    if (type === "Credited") return balance + value;
+    if (type === "Debited") return balance - value;
+    return balance;
+};
+
 export const getUser = async (req, res) => {
     const id = req.params.id;
     try {
-        const user = await User.findById(id);
+        const user = await User.findById(id).select("-password");
         if (user) {
-            res.status(200).json({ success: true, message: "Fetched user info", data: user });
+            return res.status(200).json({ success: true, message: "Fetched user info", data: user });
         }
-        else {
-            res.status(400).json({ success: false, message: "user not found" })
-        }
+        return res.status(404).json({ success: false, message: "User not found" });
     } catch (err) {
-        res.status(500).json({ success: false, message: "Failed to fetch user info" });
+        return res.status(500).json({ success: false, message: "Failed to fetch user info" });
     }
-
 }
 
 export const getAccountInfo = async (req, res) => {
-
     const id = req.params.id;
-    let thisMonthIncome = 0
-    let thisMonthExpense = 0
-    let prevMonthIncome = 0
-    let prevMonthExpense = 0
+    let thisMonthIncome = 0;
+    let thisMonthExpense = 0;
+    let prevMonthIncome = 0;
+    let prevMonthExpense = 0;
+
     try {
         const accounts = await Account.find({ user: id });
-        if (accounts) {
-            const currentDate = new Date();
-            const currentMonth = currentDate.getMonth();
-            const currentYear = currentDate.getFullYear();
+        const currentDate = new Date();
+        const currentMonth = currentDate.getMonth();
+        const currentYear = currentDate.getFullYear();
 
-            accounts.forEach((account) => {
-                if (account.transactions && Array.isArray(account.transactions)) {
-                    account.transactions.forEach((transaction) => {
-                        const transactionDate = new Date(transaction.date);
-                        const transactionMonth = transactionDate.getMonth();
-                        const transactionYear = transactionDate.getFullYear();
+        accounts.forEach((account) => {
+            if (account.transactions && Array.isArray(account.transactions)) {
+                account.transactions.forEach((transaction) => {
+                    const transactionDate = new Date(transaction.date);
+                    const transactionMonth = transactionDate.getMonth();
+                    const transactionYear = transactionDate.getFullYear();
 
-                        if (transactionYear === currentYear && transactionMonth === currentMonth) {
-                            if (transaction.type === "Credited") {
-                                thisMonthIncome += Number(transaction.amount);
-                            } else if (transaction.type === "Debited") {
-                                thisMonthExpense += Number(transaction.amount);
-                            }
+                    if (transactionYear === currentYear && transactionMonth === currentMonth) {
+                        if (transaction.type === "Credited") {
+                            thisMonthIncome += Number(transaction.amount);
+                        } else if (transaction.type === "Debited") {
+                            thisMonthExpense += Number(transaction.amount);
                         }
-
-                        if (transactionYear === currentYear && transactionMonth === currentMonth - 1) {
-                            if (transaction.type === "Credited") {
-                                prevMonthIncome += Number(transaction.amount);
-                            } else if (transaction.type === "Debited") {
-                                prevMonthExpense += Number(transaction.amount);
-                            }
-                        } else if (currentMonth === 0 && transactionYear === currentYear - 1 && transactionMonth === 11) {
-                            if (transaction.type === "Credited") {
-                                prevMonthIncome += Number(transaction.amount);
-                            } else if (transaction.type === "Debited") {
-                                prevMonthExpense += Number(transaction.amount);
-                            }
-                        }
-                    });
-                }
-            });
-
-            const growth = (thisMonthIncome - thisMonthExpense) / (prevMonthIncome - prevMonthExpense) * 100
-
-
-
-
-            res.status(200).json({
-                success: true,
-                message: "Fetched account info.",
-                data: {
-                    accounts,
-                    headerData: {
-                        income: thisMonthIncome,
-                        expense: thisMonthExpense,
-                        savings: thisMonthIncome - thisMonthExpense,
-                        growth: Math.round(growth),
-                        incomeGrowth: Math.round(thisMonthIncome / prevMonthIncome * 100),
-                        expenseGrowth: Math.round(((thisMonthExpense-prevMonthExpense)/prevMonthExpense) * 100),
-                        savingsGrowth: Math.round((thisMonthIncome - thisMonthExpense) / (prevMonthIncome - prevMonthExpense) * 100)
                     }
-                }
-            });
-        }
+
+                    const isPrevMonth =
+                        (transactionYear === currentYear && transactionMonth === currentMonth - 1) ||
+                        (currentMonth === 0 && transactionYear === currentYear - 1 && transactionMonth === 11);
+
+                    if (isPrevMonth) {
+                        if (transaction.type === "Credited") {
+                            prevMonthIncome += Number(transaction.amount);
+                        } else if (transaction.type === "Debited") {
+                            prevMonthExpense += Number(transaction.amount);
+                        }
+                    }
+                });
+            }
+        });
+
+        const thisSavings = thisMonthIncome - thisMonthExpense;
+        const prevSavings = prevMonthIncome - prevMonthExpense;
+
+        return res.status(200).json({
+            success: true,
+            message: "Fetched account info.",
+            data: {
+                accounts,
+                headerData: {
+                    income: thisMonthIncome,
+                    expense: thisMonthExpense,
+                    savings: thisSavings,
+                    growth: safeGrowth(thisSavings, prevSavings),
+                    incomeGrowth: safeGrowth(thisMonthIncome, prevMonthIncome),
+                    expenseGrowth: safeGrowth(thisMonthExpense, prevMonthExpense),
+                    savingsGrowth: safeGrowth(thisSavings, prevSavings),
+                },
+            },
+        });
     } catch (err) {
-        res.status(500).json({ success: false, message: "Failed to fetch account info." });
+        return res.status(500).json({ success: false, message: "Failed to fetch account info." });
     }
 }
 
 export const createAccount = async (req, res) => {
-    const { type, name, balance } = req.body
-    // console.log(type, name, balance)
+    const { type, name, balance } = req.body;
     const id = req.params.id;
-    if (!req.body) {
-        return res.status(400).send("Form data invalid.")
+
+    if (!type || !name || balance === undefined || balance === null) {
+        return res.status(400).json({ success: false, message: "Type, name, and balance are required." });
     }
+
     try {
-        let account = await Account.findOne({ user: id, name })
+        const account = await Account.findOne({ user: id, name });
         if (account) {
-            console.log(account)
-            return res.status(400).send("Account already exists");
+            return res.status(400).json({ success: false, message: "Account already exists." });
         }
-        await Account.create({ user: id, type, name, balance, transactions: [] });
-        return res.status(200).json({ success: true, message: "Account created successfully." })
+        await Account.create({ user: id, type, name, balance: Number(balance), transactions: [] });
+        return res.status(201).json({ success: true, message: "Account created successfully." });
     } catch (error) {
-        console.log(error)
-        return res.status(500).json({ success: false, message: "Internal server error." })
+        console.error(error);
+        return res.status(500).json({ success: false, message: "Internal server error." });
     }
 }
-
 
 export const addTransaction = async (req, res) => {
-    if (!req.body) {
-        return res.status(400).send("Form data invalid.")
+    let { type, amount, account, date } = req.body;
+    const id = req.params.id;
+
+    if (!type || amount === undefined || !account || !date) {
+        return res.status(400).json({ success: false, message: "Type, amount, account, and date are required." });
     }
 
-    console.log(req.body)
-    let { type, amount, account, date } = req.body
-    console.log(type, amount, account, date)
-    date = new Date(date)
-    // const month = Number(String(date.getMonth() + 1).padStart(2, '0'));
-    // const year = Number(date.getFullYear());
-    const id = req.params.id
-
+    date = new Date(date);
 
     try {
-        let foundAccount = await Account.findOne({ user: id, name: account })
-        // console.log("_______account: ", foundAccount)
-        if (foundAccount) {
-            let transaction = await Transaction.create({ user: id, type, account, amount, date })
-            foundAccount = await Account.findOneAndUpdate({ user: id, name: account }, { $push: { transactions: transaction } }, { new: true })
-            await foundAccount.save();
-            return res.status(200).json({ success: true, message: "Transaction added." })
+        let foundAccount = await Account.findOne({ user: id, name: account });
+        if (!foundAccount) {
+            return res.status(400).json({ success: false, message: "Account does not exist." });
         }
-        else {
-            return res.status(400).json({ success: false, message: "Account does not exist" })
-        }
-    } catch (error) {
-        console.log(error)
-        return res.status(500).json({ success: false, message: "Internal server error." })
-    }
 
+        const transaction = await Transaction.create({ user: id, type, account, amount: String(amount), date });
+        const newBalance = applyBalanceChange(foundAccount.balance, type, amount);
+
+        await Account.findOneAndUpdate(
+            { user: id, name: account },
+            { $push: { transactions: transaction }, $set: { balance: newBalance } },
+            { new: true }
+        );
+
+        return res.status(200).json({ success: true, message: "Transaction added." });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ success: false, message: "Internal server error." });
+    }
 }
 
-
-
 export const createMonthlyData = async (req, res) => {
-    const { month, year } = req.body
-    const id = req.params.id
-    if (!req.body) {
-        return res.status(400).send("Form data invalid.")
+    const { month, year } = req.body;
+    const id = req.params.id;
+
+    if (!month || !year) {
+        return res.status(400).json({ success: false, message: "Month and year are required." });
     }
+
     try {
-        const monthlyDataExists = MonthlyData.findOne({ user: id, month, year })
+        const monthlyDataExists = await MonthlyData.findOne({ user: id, month, year });
         if (monthlyDataExists) {
-            return res.status(400).send("Data already Exists.")
+            return res.status(400).json({ success: false, message: "Data already exists." });
         }
-        const monthlyData = await MonthlyData.create({ user: id, month, year });
-        return res.status(200).json({ success: true, message: "Monthly data entered." })
+        await MonthlyData.create({ user: id, month, year });
+        return res.status(201).json({ success: true, message: "Monthly data entered." });
     } catch (error) {
-        return res.status(500).json({ success: false, message: "Internal server error." })
+        return res.status(500).json({ success: false, message: "Internal server error." });
     }
 }
 
 export const getAllTransactions = async (req, res) => {
     try {
-        const id = req.params.id
-        const transactions = await Transaction.find({ user: id })
-        return res.status(200).json({ success: true, message: "Got all transactions.", data: transactions })
+        const id = req.params.id;
+        const transactions = await Transaction.find({ user: id });
+        return res.status(200).json({ success: true, message: "Got all transactions.", data: transactions });
     } catch (error) {
-        console.log(error)
-
+        console.error(error);
+        return res.status(500).json({ success: false, message: "Failed to fetch transactions." });
     }
 }
 
 export const deleteTransaction = async (req, res) => {
     try {
-        const id = req.params.id
-        const user = req.body.user
-        const transaction = await Transaction.findByIdAndDelete(id)
-        if (transaction) {
-            const account = await Account.findOneAndUpdate(
-                { user, name: transaction.account },
-                { $pull: { transactions: { _id: transaction._id } } }, { new: true })
-            return res.status(200).json({ success: true, message: "Deleted " + id })
+        const id = req.params.id;
+        const transaction = await Transaction.findById(id);
+
+        if (!transaction) {
+            return res.status(404).json({ success: false, message: "Transaction not found." });
+        }
+        if (String(transaction.user) !== String(req.userId)) {
+            return res.status(403).json({ success: false, message: "Forbidden." });
         }
 
+        await Transaction.findByIdAndDelete(id);
+
+        const account = await Account.findOne({ user: transaction.user, name: transaction.account });
+        if (account) {
+            const revertedBalance = applyBalanceChange(
+                account.balance,
+                transaction.type === "Credited" ? "Debited" : "Credited",
+                transaction.amount
+            );
+            await Account.findOneAndUpdate(
+                { user: transaction.user, name: transaction.account },
+                {
+                    $pull: { transactions: { _id: transaction._id } },
+                    $set: { balance: revertedBalance },
+                },
+                { new: true }
+            );
+        }
+
+        return res.status(200).json({ success: true, message: "Deleted " + id });
     } catch (err) {
-        console.log(err)
+        console.error(err);
+        return res.status(500).json({ success: false, message: "Failed to delete transaction." });
     }
 }
 
 export const updateTransaction = async (req, res) => {
     try {
-        const id = req.params.id
-        console.log(id)
-        const user = req.body.user
-        const amount = req.body.amount
-        const transaction = await Transaction.findByIdAndUpdate(id, { amount: amount }, { new: true })
-        console.log(transaction)
-        if (transaction) {
-            let account = await Account.findOneAndUpdate(
-                { user, name: transaction.account, 'transactions._id': transaction._id },
-                { $set: { 'transactions.$.amount': amount } },
-                { new: true })
-            console.log(account)
-            return res.status(200).json({ success: true, message: "Deleted " + id })
+        const id = req.params.id;
+        const amount = req.body.amount;
+
+        if (amount === undefined || amount === null) {
+            return res.status(400).json({ success: false, message: "Amount is required." });
         }
 
+        const existing = await Transaction.findById(id);
+        if (!existing) {
+            return res.status(404).json({ success: false, message: "Transaction not found." });
+        }
+        if (String(existing.user) !== String(req.userId)) {
+            return res.status(403).json({ success: false, message: "Forbidden." });
+        }
+
+        const oldAmount = Number(existing.amount) || 0;
+        const newAmount = Number(amount) || 0;
+        const delta = newAmount - oldAmount;
+
+        const transaction = await Transaction.findByIdAndUpdate(
+            id,
+            { amount: String(amount) },
+            { new: true }
+        );
+
+        const account = await Account.findOne({
+            user: existing.user,
+            name: existing.account,
+            "transactions._id": existing._id,
+        });
+
+        if (account) {
+            const balanceDelta = existing.type === "Credited" ? delta : -delta;
+            await Account.findOneAndUpdate(
+                { user: existing.user, name: existing.account, "transactions._id": existing._id },
+                {
+                    $set: {
+                        "transactions.$.amount": String(amount),
+                        balance: account.balance + balanceDelta,
+                    },
+                },
+                { new: true }
+            );
+        }
+
+        return res.status(200).json({ success: true, message: "Updated " + id, data: transaction });
     } catch (err) {
-        console.log(err)
+        console.error(err);
+        return res.status(500).json({ success: false, message: "Failed to update transaction." });
     }
 }
 
 export const deleteAccount = async (req, res) => {
     try {
-        const accountId = req.params.id
-        const user = req.body.user
-        const account = await Account.findByIdAndDelete(accountId)
+        const accountId = req.params.id;
+        const account = await Account.findById(accountId);
 
-        if (account) {
-            const deletedTransaction = await Transaction.deleteMany(
-                {
-                    account: account.name,
-                    user: user
-                });
-
-            return res.status(200).json({
-                success: true,
-                message: "Deleted account with ID " + id,
-                deletedTransaction: deletedTransaction.deletedCount
-            });
-        } else {
+        if (!account) {
             return res.status(404).json({
                 success: false,
-                message: "Account not found"
+                message: "Account not found",
             });
         }
+        if (String(account.user) !== String(req.userId)) {
+            return res.status(403).json({ success: false, message: "Forbidden." });
+        }
+
+        await Account.findByIdAndDelete(accountId);
+        const deletedTransaction = await Transaction.deleteMany({
+            account: account.name,
+            user: account.user,
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Deleted account with ID " + accountId,
+            deletedTransaction: deletedTransaction.deletedCount,
+        });
     } catch (err) {
-        console.log(err);
+        console.error(err);
         return res.status(500).json({
             success: false,
-            message: "Internal Server Error"
+            message: "Internal Server Error",
         });
     }
 }
+
 export const addRecurringTransaction = async (req, res) => {
-    if (!req.body) {
-        return res.status(400).send("Form data invalid.")
+    let { type, amount, account, date, frequency } = req.body;
+    const id = req.params.id;
+
+    if (!type || amount === undefined || !account || !date) {
+        return res.status(400).json({ success: false, message: "Type, amount, account, and date are required." });
     }
 
-    console.log(req.body)
-    let { type, amount, account, date, frequency } = req.body
-    console.log(type, amount, account, date, frequency)
-    date = new Date(date)
-    const id = req.params.id
+    date = new Date(date);
 
     try {
-        let recurrTrans = await RecurringTransaction.create({ user: id, type, account, amount, date , frequency})
-        console.log(recurrTrans)
-
-        return res.status(200).json({ success: true, message: "Recurring transaction created successfully." })
+        await RecurringTransaction.create({
+            user: id,
+            type,
+            account,
+            amount: String(amount),
+            date,
+            frequency: Number(frequency) || 0,
+        });
+        return res.status(201).json({ success: true, message: "Recurring transaction created successfully." });
     } catch (error) {
-        console.log(error)
+        console.error(error);
+        return res.status(500).json({ success: false, message: "Internal server error." });
     }
-
 }
 
 export const payRecurringTransaction = async (req, res) => {
-
     const id = req.params.id;
-    const user = req.body.user;
-    const recurrTran = await RecurringTransaction.findById(id)
-    if (recurrTran) {
-        const date = new Date();
 
-
-        try {
-            let foundAccount = await Account.findOne({ user, name: recurrTran.account })
-            if (foundAccount) {
-
-                let transaction = await Transaction.create({ user, type:recurrTran.type, account:recurrTran.account, amount:recurrTran.amount, date })
-                foundAccount = await Account.findOneAndUpdate({ user, name: recurrTran.account }, { $push: { transactions: transaction } }, { new: true })
-                const done = await foundAccount.save();
-                console.log(done)
-
-                const updateTran = await RecurringTransaction.findByIdAndUpdate(id, {paidFrequency:recurrTran.paidFrequency+1},{new:true})
-                console.log(typeof(updateTran.paidFrequency))
-                console.log(typeof(updateTran.frequency))
-                if(updateTran.frequency === updateTran.paidFrequency){
-                    await RecurringTransaction.findByIdAndDelete(id)
-                }
-
-                return res.status(200).json({ success: true, message: "Transaction added." })
-            }
-            else {
-                return res.status(400).json({ success: false, message: "Account does not exist" })
-            }
-        } catch (error) {
-            console.log(error)
-            return res.status(500).json({ success: false, message: "Internal server error." })
+    try {
+        const recurrTran = await RecurringTransaction.findById(id);
+        if (!recurrTran) {
+            return res.status(404).json({ success: false, message: "Recurring transaction not found." });
         }
-    }
+        if (String(recurrTran.user) !== String(req.userId)) {
+            return res.status(403).json({ success: false, message: "Forbidden." });
+        }
 
+        const user = recurrTran.user;
+        const date = new Date();
+        let foundAccount = await Account.findOne({ user, name: recurrTran.account });
+
+        if (!foundAccount) {
+            return res.status(400).json({ success: false, message: "Account does not exist." });
+        }
+
+        const transaction = await Transaction.create({
+            user,
+            type: recurrTran.type,
+            account: recurrTran.account,
+            amount: recurrTran.amount,
+            date,
+        });
+
+        const newBalance = applyBalanceChange(foundAccount.balance, recurrTran.type, recurrTran.amount);
+        await Account.findOneAndUpdate(
+            { user, name: recurrTran.account },
+            { $push: { transactions: transaction }, $set: { balance: newBalance } },
+            { new: true }
+        );
+
+        const updateTran = await RecurringTransaction.findByIdAndUpdate(
+            id,
+            { paidFrequency: recurrTran.paidFrequency + 1 },
+            { new: true }
+        );
+
+        if (updateTran.frequency > 0 && updateTran.frequency === updateTran.paidFrequency) {
+            await RecurringTransaction.findByIdAndDelete(id);
+        }
+
+        return res.status(200).json({ success: true, message: "Transaction added." });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ success: false, message: "Internal server error." });
+    }
 }
 
 export const getAllRecurring = async (req, res) => {
     try {
-        const id = req.params.id
-        const transactions = await RecurringTransaction.find({ user: id })
-        return res.status(200).json({ success: true, message: "Got all transactions.", data: transactions })
+        const id = req.params.id;
+        const transactions = await RecurringTransaction.find({ user: id });
+        return res.status(200).json({ success: true, message: "Got all transactions.", data: transactions });
     } catch (error) {
-        console.log(error)
-
+        console.error(error);
+        return res.status(500).json({ success: false, message: "Failed to fetch recurring transactions." });
     }
 }
 
-export const deleteRecurring = async (req, res)=>{
-    try{
-        const id = req.params.id
-        const user = req.body.user;
-        if(!user){return res.status(400).send("Unathorized.")}
-        const recurring = await RecurringTransaction.findByIdAndDelete(id)
-        if(recurring){
-            console.log(recurring)
-            return res.status(200).json({success: true, mesage:"Deleted"})
-        }else{
-            return res.status(400).send("Not found.")
+export const deleteRecurring = async (req, res) => {
+    try {
+        const id = req.params.id;
+        const recurring = await RecurringTransaction.findById(id);
+
+        if (!recurring) {
+            return res.status(404).json({ success: false, message: "Not found." });
+        }
+        if (String(recurring.user) !== String(req.userId)) {
+            return res.status(403).json({ success: false, message: "Forbidden." });
         }
 
-    }catch(error){
-        console.log(error)
+        await RecurringTransaction.findByIdAndDelete(id);
+        return res.status(200).json({ success: true, message: "Deleted" });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ success: false, message: "Failed to delete recurring transaction." });
     }
 }

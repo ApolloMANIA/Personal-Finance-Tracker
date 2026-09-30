@@ -12,7 +12,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  ChartConfig,
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
@@ -28,14 +27,6 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "@/components/ui/toggle-group";
-
-
-
-interface Transaction {
-  type: string;
-  amount: number;
-  date: string;
-}
 
 interface DailyData {
   date: string;
@@ -67,7 +58,7 @@ const chartConfig = {
   },
 };
 
-export function ChartAreaInteractive({accounts} : {accounts:Props[]}) {
+export const ChartAreaInteractive = React.memo(function ChartAreaInteractive({accounts} : {accounts:Props[]}) {
   const isMobile = useIsMobile();
   const [timeRange, setTimeRange] = React.useState("90d");
   const [selectedAccount, setSelectedAccount] = React.useState(accounts[0]?.name || "");
@@ -101,7 +92,7 @@ export function ChartAreaInteractive({accounts} : {accounts:Props[]}) {
 
   return (
     <>
-    <Card className="@container/card">
+    <Card className="@container/card rounded-2xl border-border/70 shadow-none">
       <CardHeader>
         <CardTitle>Account Activity</CardTitle>
         <CardDescription>
@@ -199,6 +190,7 @@ export function ChartAreaInteractive({accounts} : {accounts:Props[]}) {
               fill="url(#fillCredited)"
               stroke="var(--color-credited)"
               stackId="a"
+              isAnimationActive={false}
             />
             <Area
               dataKey="debited"
@@ -206,6 +198,7 @@ export function ChartAreaInteractive({accounts} : {accounts:Props[]}) {
               fill="url(#fillDebited)"
               stroke="var(--color-debited)"
               stackId="a"
+              isAnimationActive={false}
             />
           </AreaChart>
         </ChartContainer>
@@ -215,4 +208,4 @@ export function ChartAreaInteractive({accounts} : {accounts:Props[]}) {
 
     </>
   );
-}
+});
