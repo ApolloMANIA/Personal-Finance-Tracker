@@ -16,6 +16,17 @@ const allowedOrigins = (process.env.CLIENT_ORIGIN || "http://localhost:5173,http
     .map((o) => o.trim().replace(/\/$/, ""))
     .filter(Boolean);
 
+// Also allow https/http twin of each configured origin (Hostinger often redirects http→https)
+for (const origin of [...allowedOrigins]) {
+    if (origin.startsWith("http://")) {
+        const httpsTwin = "https://" + origin.slice("http://".length);
+        if (!allowedOrigins.includes(httpsTwin)) allowedOrigins.push(httpsTwin);
+    } else if (origin.startsWith("https://")) {
+        const httpTwin = "http://" + origin.slice("https://".length);
+        if (!allowedOrigins.includes(httpTwin)) allowedOrigins.push(httpTwin);
+    }
+}
+
 console.log("CORS allowed origins:", allowedOrigins);
 
 app.use(express.json());
