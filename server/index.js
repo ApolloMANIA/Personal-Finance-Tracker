@@ -13,8 +13,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const allowedOrigins = (process.env.CLIENT_ORIGIN || "http://localhost:5173,http://127.0.0.1:5173")
     .split(",")
-    .map((o) => o.trim())
+    .map((o) => o.trim().replace(/\/$/, ""))
     .filter(Boolean);
+
+console.log("CORS allowed origins:", allowedOrigins);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -25,7 +27,8 @@ app.use(
             if (!origin || allowedOrigins.includes(origin)) {
                 return callback(null, true);
             }
-            return callback(new Error(`CORS blocked for origin: ${origin}`));
+            // Reject without throwing — throwing causes a 500 with no CORS headers
+            return callback(null, false);
         },
         methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
         allowedHeaders: ["Content-Type", "Authorization"],
